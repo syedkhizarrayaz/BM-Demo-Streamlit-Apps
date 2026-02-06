@@ -276,7 +276,8 @@ def call_prediction_api(data: List[Dict[str, Any]], api_base_url: str = DEFAULT_
 
 def call_analysis_api(data: List[Dict[str, Any]], api_base_url: str = DEFAULT_API_BASE_URL, 
                        cloud: bool = False, llm_on_server: bool = False, 
-                       url: str = "", anonymous: bool = False) -> Dict[str, Any]:
+                       url: str = "", anonymous: bool = False,
+                       audit: bool = False, evaluation: bool = False) -> Dict[str, Any]:
     """Call the analysis API with flags"""
     try:
         # Add flags to each alert data object
@@ -287,6 +288,8 @@ def call_analysis_api(data: List[Dict[str, Any]], api_base_url: str = DEFAULT_AP
             alert_copy['llm_on_server'] = llm_on_server
             alert_copy['url'] = url
             alert_copy['anonymous'] = anonymous
+            alert_copy['audit'] = audit
+            alert_copy['evaluation'] = evaluation
             data_with_flags.append(alert_copy)
         
         api_url = f"{api_base_url}/api/ai-service/generateamlanalysis"
@@ -396,11 +399,30 @@ def display_analysis_result(result: Dict[str, Any]):
                 if customer_name and customer_name != 'N/A':
                     st.caption(f"Customer: {customer_name}")
             
+            # Display thinking separately if present (from audit mode)
+            thinking_text = analysis.get('thinking')
+            if thinking_text:
+                st.markdown("---")
+                st.subheader("🧠 Thinking Process (Audit Mode)")
+                st.caption("This section shows the model's reasoning process when Audit Mode is enabled.")
+                
+                # Display thinking in a separate styled text area
+                st.text_area(
+                    "Model Reasoning",
+                    value=str(thinking_text),
+                    height=400,
+                    disabled=True,
+                    label_visibility="visible",
+                    key=f"thinking_{alert_id}",
+                    help="This is the model's internal reasoning process. Scroll to view the full thinking."
+                )
+            
             # Display the analysis text
             analysis_text = analysis.get('analysis', analysis.get('Analysis', analysis.get('AnalysisReport', '')))
             
             if analysis_text:
                 st.markdown("---")
+                st.subheader("📊 Analysis Report")
                 
                 # Format the text for better display
                 import html
@@ -722,6 +744,25 @@ def main():
                 key="analysis_anonymous"
             )
         
+        # Additional Flags
+        st.markdown("---")
+        st.subheader("🔧 Advanced Options")
+        col1, col2 = st.columns(2)
+        with col1:
+            audit = st.checkbox(
+                "🔍 Audit Mode",
+                value=False,
+                help="Use a thinking model for generation and include 'thinking' reasoning in the response. Cloud: uses OPENROUTER_THINKING_MODEL, Local: uses OLLAMA_THINKING_MODEL.",
+                key="analysis_audit"
+            )
+        with col2:
+            evaluation = st.checkbox(
+                "✅ Evaluation Mode",
+                value=False,
+                help="Evaluate the generated analysis and fix mistakes using an evaluator agent. Works with both Cloud and Local/Remote LLM.",
+                key="analysis_evaluation"
+            )
+        
         # Show warning if multiple LLM options are selected
         if use_cloud and llm_on_server:
             st.warning("⚠️ Multiple LLM options selected. Priority: Cloud > Remote Server")
@@ -742,7 +783,9 @@ def main():
                     cloud=use_cloud,
                     llm_on_server=llm_on_server,
                     url=remote_url,
-                    anonymous=anonymous
+                    anonymous=anonymous,
+                    audit=audit,
+                    evaluation=evaluation
                 )
                 st.session_state.analysis_result = result
         
